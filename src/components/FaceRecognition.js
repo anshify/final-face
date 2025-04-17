@@ -4,8 +4,24 @@ import * as faceapi from 'face-api.js';
 const FaceRecognition = () => {
   const videoRef = useRef();
   const canvasRef = useRef();
-  const [upiID, setUpiID] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
   const [registeredUsers, setRegisteredUsers] = useState([]);
+
+  // Connect to MetaMask wallet
+  const connectWallet = async () => {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        setWalletAddress(accounts[0]);
+        alert(`✅ Wallet Connected: ${accounts[0]}`);
+      } catch (error) {
+        console.error('MetaMask connection error:', error);
+        alert('❌ Failed to connect wallet.');
+      }
+    } else {
+      alert('❌ MetaMask is not installed.');
+    }
+  };
 
   // Start webcam
   const startVideo = () => {
@@ -23,29 +39,25 @@ const FaceRecognition = () => {
     await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
   };
 
-  // Persist users to localStorage
   const persistUsers = (users) => {
     localStorage.setItem('face-users', JSON.stringify(users));
   };
 
-  // Load users from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('face-users');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Convert descriptors back to Float32Array
       const converted = parsed.map(user => ({
-        upiID: user.upiID,
+        walletAddress: user.walletAddress,
         descriptor: new Float32Array(user.descriptor)
       }));
       setRegisteredUsers(converted);
     }
   }, []);
 
-  // Face registration logic with duplicate check
   const registerFace = async () => {
-    if (!upiID) {
-      alert('Please enter your UPI ID');
+    if (!walletAddress) {
+      alert('Please connect your MetaMask wallet first.');
       return;
     }
 
@@ -59,34 +71,28 @@ const FaceRecognition = () => {
       return;
     }
 
-    // Check if the same face is already registered
-    const existingUser = registeredUsers.find(
-      (user) => {
-        const distance = faceapi.euclideanDistance(user.descriptor, detections.descriptor);
-        return distance < 0.6; // Threshold for matching faces
-      }
-    );
+    const existingUser = registeredUsers.find((user) => {
+      const distance = faceapi.euclideanDistance(user.descriptor, detections.descriptor);
+      return distance < 0.6;
+    });
 
     if (existingUser) {
-      alert(`❌ This face is already registered with UPI ID: ${existingUser.upiID}`);
+      alert(`❌ This face is already registered with wallet: ${existingUser.walletAddress}`);
       return;
     }
 
-    // Register new user
     const newUser = {
-      upiID: upiID,
-      descriptor: Array.from(detections.descriptor), // Save as array for localStorage
+      walletAddress: walletAddress,
+      descriptor: Array.from(detections.descriptor),
     };
 
     const updatedUsers = [...registeredUsers, newUser];
     setRegisteredUsers(updatedUsers);
     persistUsers(updatedUsers);
 
-    alert(`✅ Face registered for ${upiID}`);
-    setUpiID('');
+    alert(`✅ Face registered for wallet: ${walletAddress}`);
   };
 
-  // Face recognition and mock payment
   const recognizeAndPay = async () => {
     const detection = await faceapi
       .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
@@ -100,7 +106,7 @@ const FaceRecognition = () => {
 
     const labeledDescriptors = registeredUsers.map(user =>
       new faceapi.LabeledFaceDescriptors(
-        user.upiID,
+        user.walletAddress,
         [new Float32Array(user.descriptor)]
       )
     );
@@ -109,13 +115,12 @@ const FaceRecognition = () => {
     const match = faceMatcher.findBestMatch(detection.descriptor);
 
     if (match.label !== 'unknown') {
-      alert(`✅ Payment triggered for ${match.label}`);
+      alert(`✅ Payment triggered for wallet: ${match.label}`);
     } else {
       alert('❌ Face not recognized.');
     }
   };
 
-  // Clear registered faces
   const clearRegisteredFaces = () => {
     setRegisteredUsers([]);
     localStorage.removeItem('face-users');
@@ -152,14 +157,10 @@ const FaceRecognition = () => {
 
   return (
     <div style={{ textAlign: 'center' }}>
-      <h2>👤 Register Your Face with UPI ID</h2>
-      <input
-        type="text"
-        value={upiID}
-        placeholder="Enter your UPI ID"
-        onChange={(e) => setUpiID(e.target.value)}
-        style={{ padding: '10px', width: '300px', fontSize: '16px' }}
-      />
+      <h2>👤 Register Your Face with Crypto Wallet</h2>
+      <button onClick={connectWallet} style={{ padding: '10px 20px' }}>
+        {walletAddress ? `Connected: ${walletAddress.slice(0, 6)}...` : 'Connect Wallet'}
+      </button>
       <br />
       <button onClick={registerFace} style={{ marginTop: '10px', padding: '10px 20px' }}>
         Register Face
@@ -178,10 +179,10 @@ const FaceRecognition = () => {
 
       {registeredUsers.length > 0 && (
         <div style={{ marginTop: '20px' }}>
-          <h3>👥 Registered Users:</h3>
+          <h3>👥 Registered Users (Wallets):</h3>
           <ul>
             {registeredUsers.map((user, index) => (
-              <li key={index}>{user.upiID}</li>
+              <li key={index}>{user.walletAddress}</li>
             ))}
           </ul>
         </div>
